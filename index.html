@@ -552,7 +552,6 @@ section.view { min-height: 100dvh; padding: calc(16px + env(safe-area-inset-top)
 .lvl::-webkit-scrollbar { display: none; }
 .lvl.on { display: block; }
 .lvl.ghost { display: block; pointer-events: none; z-index: 1; }
-.lvl[data-l="3"][style*="--day-drag-x"] :is(.ag-time, .ag-card > *, .free > *) { translate: var(--day-drag-x) 0; }
 
 /* боковые переключатели: тонкие стеклянные «язычки», почти незаметны, проявляются при наведении */
 .side { position: absolute; top: 50%; z-index: 3; width: 26px; height: 64px; margin-top: -32px; border: 0; padding: 0; display: grid; place-items: center; color: var(--h1);
@@ -1571,35 +1570,14 @@ function nextLesson() {
 const ALIAS = { grades: 'study', requests: 'docs', today: 'home' };       // id разделов шаблона → наши
 const ZK_VIEW = { study: 'grades', docs: 'requests', inbox: 'inbox', profile: 'profile', settings: 'settings', access: 'access' };
 const DOCK_OF = { docs: 'profile' };                                    // Документы живут внутри Профиля
-let curView = 'home', navStack = [], sectionMotion = [];
+let curView = 'home', navStack = [];
 // «Назад» возвращает на предыдущий экран; если истории нет — на главную
 function back() { go(navStack.pop() || 'home', true); }
-function stopSectionMotion() {
-  sectionMotion.forEach(animation => animation.cancel());
-  sectionMotion = [];
-}
-// Движется содержимое карточек. Сами стеклянные слои и их предки остаются неподвижными.
-const SECTION_CONTENT = '.page-h h1, .card-h, .gr-title, .ring-c, .ring-side, .subj-h, .ms-txt, .ms-name, .who > div, .pf-pane h2, .pf-doc .grow, .docs-act .grow, .req .row, .cal-ttl, .lvl.on .ag-time, .lvl.on .ag-card > b, .lvl.on .wh, #clock-big, .clock-side .date, .next';
-function moveContents(root, selector, dir, distance) {
-  const visible = [];
-  for (const el of root.querySelectorAll(selector)) {
-    if (el.parentElement.closest(selector)) continue;
-    const rect = el.getBoundingClientRect();
-    if (rect.width && rect.height && rect.top < innerHeight && rect.bottom > 0) visible.push(el);
-    if (visible.length === 12) break;
-  }
-  return visible.map((el, i) => el.animate(
-    [{ transform: `translateX(${dir * distance}px)` }, { transform: 'none' }],
-    { duration: 240, delay: Math.min(i, 4) * 12, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'backwards' }
-  ));
-}
 function go(id, noPush) {
   id = ALIAS[id] || id;
   if (!Object.hasOwn(TITLES, id)) id = 'home';
   if (isStaff() && id === 'docs') id = 'study';
-  const changed = id !== curView, index = v => DOCK.findIndex(d => d.id === (DOCK_OF[v] || v)),
-    from = index(curView), to = index(id), dir = noPush || from >= 0 && to >= 0 && to < from ? -1 : 1;
-  stopSectionMotion();
+  if (curView === 'schedule' && id !== 'schedule') stopCalendarSlide();
   if (!noPush && id !== curView) { navStack.push(curView); if (navStack.length > 30) navStack.shift(); }
   if (id === 'home') navStack = [];
   curView = id;
@@ -1613,10 +1591,6 @@ function go(id, noPush) {
   if (id === 'schedule') {
     if (!cal.opened) { cal.opened = true; cal.Z.x = cal.Z.t = innerWidth < 760 ? 3 : 2; }
     cal.origin = null; header(); paint(); scrollToNow();
-  }
-  if (changed && !reduced() && !document.hidden) {
-    const view = $(id === 'home' ? '#v-home' : id === 'schedule' ? '#v-schedule' : '#v-zk');
-    sectionMotion = moveContents(view, SECTION_CONTENT, dir, 16);
   }
   kick();
 }
@@ -1662,7 +1636,7 @@ window.lkUI = {
 window.lkMy = { add: addMy, del: delMy, has: id => Object.values(MY).some(l => l.some(o => o.id === id)) };
 window.lkBack = back;
 window.lkView = () => curView;
-window.lkLogout = () => { stopSectionMotion(); window.ZK.closeSheet(); $('#app').hidden = true; $('#login').hidden = false; };
+window.lkLogout = () => { stopCalendarSlide(); window.ZK.closeSheet(); $('#app').hidden = true; $('#login').hidden = false; };
 document.addEventListener('click', e => {
   if (e.target.closest('[data-back]')) return back();
   const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go);
@@ -1874,19 +1848,19 @@ function shift(dir) {
     cal.hour = h;
   }
 }
-const DAY_CONTENT = '.ag-time, .ag-card > *, .free > *';
-let calendarMotion = [], calendarGhost = null;
-function slide(dir, mutate, from = 0) {
-  const el = layers[cal.level], still = reduced();
-  calendarMotion.forEach(animation => animation.cancel());
-  calendarMotion = [];
+let calendarMotion = null, calendarGhost = null;
+function stopCalendarSlide() {
+  calendarMotion?.cancel();
+  calendarMotion = null;
   calendarGhost?.remove();
   calendarGhost = null;
-  el.style.removeProperty('--day-drag-x');
-  if (cal.level === 3 || still || !dir) {
+}
+function slide(dir, mutate, from = 0) {
+  const el = layers[cal.level];
+  stopCalendarSlide();
+  if (cal.level === 3 || reduced() || !dir) {
     mutate(); header(); paint();
     el.style.transform = ''; el.style.opacity = '1'; scrollToNow(el);
-    if (!still && dir) calendarMotion = moveContents(el, DAY_CONTENT, dir, 14);
     return;
   }
   let ghost = null;
@@ -1902,8 +1876,8 @@ function slide(dir, mutate, from = 0) {
   const D = 24, op0 = 1 - Math.min(.35, Math.abs(from) / 400);
   if (ghost) ghost.animate([{ transform: `translateX(${from}px)`, opacity: op0 }, { transform: `translateX(${from - dir * D}px)`, opacity: 0 }],
     { duration: 220, easing: 'cubic-bezier(.4,0,.7,.4)', fill: 'forwards' }).onfinish = () => ghost.remove();
-  calendarMotion = [el.animate([{ transform: `translateX(${from * .3 + dir * D}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
-    { duration: 360, delay: 50, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'backwards' })];
+  calendarMotion = el.animate([{ transform: `translateX(${from * .3 + dir * D}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
+    { duration: 360, delay: 50, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'backwards' });
 }
 // в дне сразу видна текущая или ближайшая пара, а не начало списка
 function scrollToNow(el = layers[cal.level]) {
@@ -1994,13 +1968,13 @@ stage.addEventListener('pointermove', e => {
       cal.raw = pinch.z0; cal.vel = 0;
       pan(mx < pinch.mx0 ? 1 : -1);
     } else gestureMove(pinch.z0 + zoom * GAIN, mx, my);
-  } else if (ptrs.size === 1 && !multi) { // один палец вбок: вид едет за пальцем с сопротивлением
+  } else if (ptrs.size === 1 && !multi) {
     const dx = p.x - p.x0, dy = p.y - p.y0, el = layers[cal.level];
     if (!p.drag && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) p.drag = true;
-    if (p.drag && el && !reduced()) {
+    if (p.drag && el && cal.level !== 3 && !reduced()) {
       const off = dx * .45;
-      if (cal.level === 3) el.style.setProperty('--day-drag-x', `${clamp(off,-24,24)}px`);
-      else { el.style.transform = `translateX(${off}px)`; el.style.opacity = String(1 - Math.min(.35, Math.abs(off) / 400)); }
+      el.style.transform = `translateX(${off}px)`;
+      el.style.opacity = String(1 - Math.min(.35, Math.abs(off) / 400));
     }
   }
 });
@@ -2009,22 +1983,18 @@ function ptrEnd(e) {
   if (!p) return;
   ptrs.delete(e.pointerId);
   lpCancel(p);
-  const layer = layers[cal.level], dayOffset = parseFloat(layer.style.getPropertyValue('--day-drag-x'));
-  layer.style.removeProperty('--day-drag-x');
   if (p.long) { if (!ptrs.size) multi = false; return; }   // долгое нажатие уже открыло форму, это не тап
   if (pinch) { if (ptrs.size < 2) { pinch = null; gestureEnd(); } }
   else if (!multi && e.type === 'pointerup') {
     const dx = e.clientX - p.x0, dy = e.clientY - p.y0, el = layers[cal.level];
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) pan(dx < 0 ? 1 : -1, p.drag ? dx * .45 : 0);
-    else if (p.drag) {
-      if (dayOffset) calendarMotion = moveContents(el, DAY_CONTENT, Math.sign(dayOffset), Math.abs(dayOffset));
-      else if (el.style.transform.startsWith('translateX')) {
-        el.animate([{ transform: el.style.transform, opacity: el.style.opacity }, { transform: 'none', opacity: 1 }],
-          { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
-        el.style.transform = ''; el.style.opacity = '1';
-      }
+    else if (p.drag && el.style.transform.startsWith('translateX')) {
+      stopCalendarSlide();
+      calendarMotion = el.animate([{ transform: el.style.transform, opacity: el.style.opacity }, { transform: 'none', opacity: 1 }],
+        { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      el.style.transform = ''; el.style.opacity = '1';
     }
-    else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && performance.now() - p.t < 500) tap(e.clientX, e.clientY);
+    else if (!p.drag && Math.abs(dx) < 10 && Math.abs(dy) < 10 && performance.now() - p.t < 500) tap(e.clientX, e.clientY);
   }
   else if (p.drag) { const el = layers[cal.level]; el.style.transform = ''; el.style.opacity = '1'; } // прокрутка забрала жест
   if (!ptrs.size) multi = false;
