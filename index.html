@@ -385,10 +385,6 @@ button { cursor: pointer; }
 .orb.b { --t: var(--ob); }
 .orb.w { --t: var(--ow); }
 .orb.far { filter: blur(1.5px); opacity: .8; }
-/* преломление фона только там, где хватит мощности: мышь и большой экран */
-@media (hover: hover) and (pointer: fine) and (min-width: 900px) {
-  .orb:not(.far) { -webkit-backdrop-filter: blur(3px) saturate(150%); backdrop-filter: blur(3px) saturate(150%); }
-}
 
 /* Другие фоны из Настроек: тот же рисунок, окрашенный в --bgt; однотонный и фото без шаров */
 :root:not([data-bg="spheres"]) .bg { background:
@@ -432,7 +428,6 @@ html:root[data-bg="photo"][data-scheme] .bg { background: #8a9bb0 center / cover
 .login .field input:focus { border-color: var(--h2); }
 .login .hint { margin: 0; font-size: 12px; color: var(--ink-2); }
 @keyframes rise { from { opacity: 0; transform: translateY(24px) scale(.97); } }
-.app-in { animation: fade .5s both; }
 @keyframes fade { from { opacity: 0; } }
 
 section.view { min-height: 100dvh; padding: calc(16px + env(safe-area-inset-top)) 16px calc(var(--dock-h) + 40px + env(safe-area-inset-bottom)); }
@@ -505,7 +500,6 @@ section.view { min-height: 100dvh; padding: calc(16px + env(safe-area-inset-top)
 .dock { position: fixed; left: 50%; bottom: calc(var(--gutter) + env(safe-area-inset-bottom)); transform: translateX(-50%); height: var(--dock-h); padding: 0 8px; z-index: 20;
   touch-action: none; user-select: none; -webkit-user-select: none; transition: transform .35s cubic-bezier(.3,1.4,.5,1), opacity .35s; }
 .dock-bg { position: absolute; inset: 0; border-radius: var(--r-pill); will-change: transform; }
-@media (hover: hover) and (pointer: fine) { .chromium .dock-bg { -webkit-backdrop-filter: url(#refract) blur(var(--glass-blur)) saturate(var(--glass-sat)); backdrop-filter: url(#refract) blur(var(--glass-blur)) saturate(var(--glass-sat)); } }
 .dock-items { position: relative; display: flex; height: 100%; align-items: center; }
 .dock-item { position: relative; width: 56px; height: 52px; border: 0; background: none; padding: 0; display: grid; place-items: center; border-radius: var(--r-pill);
   color: var(--ink-2); will-change: transform; -webkit-tap-highlight-color: transparent; }
@@ -1147,7 +1141,7 @@ button, [data-action], .dock { touch-action: manipulation; }
     <form id="loginForm" class="glass login-card" novalidate>
       <svg class="login-logo" aria-hidden="true"><use href="#logo"/></svg>
       <h1>Личный кабинет</h1>
-      <p class="muted">Вход для студентов</p>
+      <p class="muted">Вход для студентов и сотрудников</p>
       <label class="field"><span>Логин</span><input name="login" autocomplete="username" placeholder="Логин"></label>
       <label class="field"><span>Пароль</span><input name="password" type="password" autocomplete="current-password" placeholder="Пароль"></label>
       <p id="loginError" class="hint" role="alert" hidden></p>
@@ -1231,6 +1225,8 @@ const css = getComputedStyle(document.documentElement);
 const tok = n => parseFloat(css.getPropertyValue(n));
 const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
 const reduced = () => reduceMQ.matches || UI.calm;
+let account = 'student';
+const isStaff = () => account === 'staff';
 
 /* ---------- Внешний вид: тема, сила стекла, часы, док, доступность. Хранится только в этом браузере ---------- */
 const UI_DEF = { theme: 'light', glass: 70, clock: 'classic', big: false, calm: false, dock: null, bg: 'spheres', tint: true };
@@ -1305,6 +1301,13 @@ const SUBJ = [
   ['Математический анализ', 'Петров А. В.', 0, 'Матан'], ['Программирование', 'Смирнова Е. И.', 1, 'Прогр.'], ['История России', 'Козлов Д. С.', 2, 'Ист.'],
   ['Английский язык', 'Морозова О. Н.', 3, 'Англ.'], ['Физика', 'Волков И. П.', 4, 'Физика'], ['Базы данных', 'Смирнова Е. И.', 1, 'БД'],
   ['Философия', 'Лебедева Т. А.', 2, 'Филос.'], ['Дискретная математика', 'Петров А. В.', 0, 'Дискр.']];
+const SECOND_SUBJ = [
+  ['Прикладная статистика', 'Иванова К. Н.', 0, 'Стат.'], ['Интерфейсы', 'Быков А. О.', 1, 'UX'],
+  ['Управление проектами', 'Мельникова Е. С.', 2, 'Проект'], ['Английский язык', 'Киреева Л. В.', 3, 'Англ.']];
+const STAFF_EVENTS = [
+  ['Приём студентов', 'Учебный офис', 1, 'Приём'], ['Проверка заявок', 'Учебный офис', 2, 'Заявки'],
+  ['Совещание учебного офиса', 'Учебный офис', 3, 'Совещ.']];
+const subjectsForAccount = () => isStaff() ? STAFF_EVENTS : account === 'student2' ? SECOND_SUBJ : SUBJ;
 const SLOTS = [[9, 0], [10, 45], [12, 40], [14, 20], [16, 0], [17, 40]];
 const H0 = 8, H1 = 20; // видимые часы в «Дне»
 const evCache = new Map();
@@ -1313,14 +1316,15 @@ function hash(s) { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(
 function eventsFor(d) {
   const k = dkey(d);
   if (evCache.has(k)) return evCache.get(k);
-  const h = hash(k), wd = wdi(d), busy = k === dkey(addDays(today0(), 2)), list = [];
+  const subjects = subjectsForAccount();
+  const h = hash(account === 'student' ? k : account + k), wd = wdi(d), busy = !isStaff() && k === dkey(addDays(today0(), 2)), list = [];
   if (wd < 6 || busy) {
     const n = busy ? 5 : wd === 5 ? 2 : 2 + h % 3, s0 = busy ? 0 : (h >>> 3) % 2;
     for (let i = 0; i < n; i++) {
-      const [hh, mm] = SLOTS[s0 + i], sj = SUBJ[(h + i * 7 + (h >>> 9)) % SUBJ.length], s = hh * 60 + mm;
-      list.push({ s, e: s + 90, t: sj[0], sh: sj[3], who: sj[1], c: sj[2], room: 'ауд. ' + (101 + (h >>> (i + 2)) % 320), ty: ['Лекция', 'Практика', 'Лабораторная'][(h >>> (i + 5)) % 3] });
+      const [hh, mm] = SLOTS[s0 + i], sj = subjects[(h + i * 7 + (h >>> 9)) % subjects.length], s = hh * 60 + mm;
+      list.push({ s, e: s + 90, t: sj[0], sh: sj[3], who: sj[1], c: sj[2], room: isStaff() ? 'каб. 214' : 'ауд. ' + (101 + (h >>> (i + 2)) % 320), ty: isStaff() ? 'Рабочий график' : ['Лекция', 'Практика', 'Лабораторная'][(h >>> (i + 5)) % 3] });
     }
-    if (busy || h % 4 === 0) list.push({ s: 660, e: 720, t: 'Консультация по курсовой', sh: 'Конс.', who: 'Петров А. В.', c: 4, room: 'ауд. 214', ty: 'Консультация' });
+    if (!isStaff() && (busy || h % 4 === 0)) list.push({ s: 660, e: 720, t: 'Консультация по курсовой', sh: 'Конс.', who: account === 'student2' ? 'Мельникова Е. С.' : 'Петров А. В.', c: 4, room: 'ауд. 214', ty: 'Консультация' });
   }
   for (const o of MY[k] || []) list.push({ ...o, sh: o.t.slice(0, 6), c: 5, own: true });
   list.sort((a, b) => a.s - b.s);
@@ -1328,8 +1332,10 @@ function eventsFor(d) {
   return list;
 }
 // Свои занятия (долгое нажатие в календаре, «Пойду» на доске мероприятий): {дата: [{id, s, e, t, ty, room, who}]}, только в этом браузере
-const MY = (() => { try { return JSON.parse(localStorage.getItem('lk:my')) || {}; } catch { return {}; } })();
-function saveMy(k) { if (!MY[k]?.length) delete MY[k]; try { localStorage.setItem('lk:my', JSON.stringify(MY)); } catch { } evCache.delete(k); cal.built = []; if (curView === 'schedule') paint(); }
+const myKey = () => account === 'student' ? 'lk:my' : 'lk:' + account + ':my';
+function loadMy() { try { return JSON.parse(localStorage.getItem(myKey())) || {}; } catch { return {}; } }
+let MY = loadMy();
+function saveMy(k) { if (!MY[k]?.length) delete MY[k]; try { localStorage.setItem(myKey(), JSON.stringify(MY)); } catch { } evCache.delete(k); cal.built = []; if (curView === 'schedule') paint(); }
 function addMy(k, ev) { (MY[k] = MY[k] || []).push(ev); saveMy(k); }
 function delMy(id) { for (const k in MY) if (MY[k].some(o => o.id === id)) { MY[k] = MY[k].filter(o => o.id !== id); saveMy(k); } }
 // первое свободное время в дне на dur минут, с 9:00 шагом 15 минут
@@ -1351,12 +1357,12 @@ function lanes(list) {
 }
 
 /* ---------- Вход ---------- */
-const DEMO_ACCOUNTS = { student: 'lk-demo-2026', jury: 'jury-demo-2026', student2: 'lk-demo-02', student3: 'lk-demo-03' };
+const DEMO_ACCOUNTS = { student: 'lk-demo-2026', student2: 'lk-demo-02', staff: 'staff-demo-2026' };
 function openApp() {
   $('#login').hidden = true;
   const app = $('#app');
   app.hidden = false;
-  app.classList.add('app-in');
+  buildDock();
   measure();
   go('home');
   openDeepLink();
@@ -1373,6 +1379,11 @@ $('#loginForm').addEventListener('submit', e => {
   }
   error.hidden = true;
   form.reset();
+  account = login;
+  MY = loadMy();
+  evCache.clear();
+  cal.built = [];
+  window.ZK.signIn();
   openApp();
 });
 
@@ -1390,7 +1401,7 @@ function tickHome(force) {
   $('#c-date').textContent = `${t.getDate()} ${MON_S[t.getMonth()]}`;
   $('#clock-big').setAttribute('aria-label', `${pad(t.getHours())}:${pad(t.getMinutes())}, ${dayLabel(t)}`);
   const n = nextLesson();
-  $('#n-label').textContent = n ? n.label : 'Занятий на неделе нет';
+  $('#n-label').textContent = isStaff() ? 'Рабочий график · учебный офис' : n ? n.label : 'Занятий на неделе нет';
   $('#n-title').textContent = n ? n.e.t : '';
   $('#n-meta').textContent = n ? `${fm(n.e.s)}–${fm(n.e.e)} · ${n.e.room} · ${n.e.who}` : '';
 }
@@ -1435,7 +1446,10 @@ const lensX = spring(0, .05);
 let rest = [], widths = [], W = 1, px = null, pressed = -1, active = 0, hoverI = -1, scrubbing = false, tipI = -1, tipTimer, dockRAF = 0, dockLast = 0, lensReady = false;
 function buildDock() {
   DOCK.length = 0;
-  dockCfg().filter(c => c.on).forEach(c => DOCK.push({ ...DOCK_ALL.find(d => d.id === c.id), ic: c.ic }));
+  dockCfg().filter(c => c.on).forEach(c => {
+    const item = DOCK_ALL.find(d => d.id === c.id);
+    DOCK.push({ ...item, label: isStaff() && item.id === 'study' ? 'Заявки' : item.label, ic: c.ic });
+  });
   items.innerHTML = DOCK.map((d, i) => `<button class="dock-item" data-i="${i}" aria-label="${d.label}" tabindex="${d.id === 'home' ? 0 : -1}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[d.id][d.ic]}</svg></button>`).join('');
   btns = $$('.dock-item', items);
   S = btns.map(() => ({ s: spring(1), y: spring(0, .05) }));
@@ -1559,24 +1573,10 @@ const DOCK_OF = { docs: 'profile' };                                    // До�
 let curView = 'home', navStack = [];
 // «Назад» возвращает на предыдущий экран; если истории нет — на главную
 function back() { go(navStack.pop() || 'home', true); }
-// плавная смена экрана: блоки нового экрана выплывают по очереди со стороны движения
-// (вперёд — справа, «назад» — слева, по доку — по положению кнопки). Анимируются сами блоки,
-// а не секция целиком: прозрачность на предке отключила бы размытие у стеклянных карточек внутри
-const VIEW_EL = id => $(id === 'home' ? '#v-home' : id === 'schedule' ? '#v-schedule' : '#v-zk');
-function pageIn(id, dir) {
-  if (reduced()) return;
-  const el = VIEW_EL(id), kids = [...(id === 'home' || id === 'schedule' ? el.children : el.querySelectorAll('#zk-main > .view > *'))]
-    .filter(k => k.getClientRects().length).slice(0, 9);
-  kids.forEach((k, i) => k.animate([
-    { opacity: 0, transform: `translate3d(${dir * 26}px, 12px, 0) scale(.985)` },
-    { opacity: 1, transform: 'none' }
-  ], { duration: 520, delay: Math.min(i, 6) * 38, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }));
-}
 function go(id, noPush) {
   id = ALIAS[id] || id;
   if (!TITLES[id]) id = 'home';
-  const prev = curView, di = v => DOCK.findIndex(d => d.id === (DOCK_OF[v] || v));
-  const dir = noPush ? -1 : di(prev) >= 0 && di(id) >= 0 && di(prev) !== di(id) ? Math.sign(di(id) - di(prev)) : 1;
+  if (isStaff() && id === 'docs') id = 'study';
   if (!noPush && id !== curView) { navStack.push(curView); if (navStack.length > 30) navStack.shift(); }
   if (id === 'home') navStack = [];
   curView = id;
@@ -1591,7 +1591,6 @@ function go(id, noPush) {
     if (!cal.opened) { cal.opened = true; cal.Z.x = cal.Z.t = innerWidth < 760 ? 3 : 2; }
     cal.origin = null; header(); paint(); scrollToNow();
   }
-  if (prev !== id) pageIn(id, dir);
   kick();
 }
 function markDock(tipToo) {
@@ -1604,7 +1603,7 @@ function markDock(tipToo) {
 window.lkGo = go;
 window.lkUI = {
   get: () => ({ ...UI, dock: dockCfg() }),
-  icons: ICONS, dockAll: DOCK_ALL, bgs: BGS, photo: () => BGIMG,
+  icons: ICONS, get dockAll(){ return isStaff() ? DOCK_ALL.map(d=>d.id==='study' ? {...d,label:'Заявки'} : d) : DOCK_ALL; }, bgs: BGS, photo: () => BGIMG,
   // фото уменьшается до 1920 px и сжимается в JPEG; средний цвет берётся с уменьшенной копии 32×32
   async setPhoto(file) {
     const url = URL.createObjectURL(file);
@@ -1636,7 +1635,7 @@ window.lkUI = {
 window.lkMy = { add: addMy, del: delMy, has: id => Object.values(MY).some(l => l.some(o => o.id === id)) };
 window.lkBack = back;
 window.lkView = () => curView;
-window.lkLogout = () => { $('#app').hidden = true; $('#login').hidden = false; };
+window.lkLogout = () => { window.ZK.closeSheet(); $('#app').hidden = true; $('#login').hidden = false; };
 document.addEventListener('click', e => {
   if (e.target.closest('[data-back]')) return back();
   const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go);
@@ -1886,8 +1885,8 @@ function openLesson(k, i) {
   const d = parseKey(k), e = eventsFor(d)[i], m = nowMin(), t = today0();
   const when = sameDay(d, t) ? (m < e.s ? `Начнётся через ${durH(e.s - m)}` : m < e.e ? `Идёт, осталось ${durH(e.e - m)}` : 'Уже прошла') : d < t ? 'Прошла' : 'Впереди';
   window.ZK.sheet(e.t, `<dl class="kv"><dt>Когда</dt><dd>${dayLabel(d)}, ${fm(e.s)}–${fm(e.e)}</dd><dt>Статус</dt><dd>${when}</dd><dt>Тип</dt><dd>${e.ty}</dd>
-    ${e.room ? `<dt>${e.own ? 'Место' : 'Аудитория'}</dt><dd>${e.room}</dd>` : ''}${e.who ? `<dt>${e.own ? 'Кто' : 'Преподаватель'}</dt><dd>${e.who}</dd>` : ''}</dl>
-    <div class="row" style="margin-top:18px;gap:8px;flex-wrap:wrap">${e.own ? `<button class="btn ghost" data-cal="del" data-id="${e.id}">Удалить из расписания</button>` : '<button class="btn" data-cal="study">Баллы и задания</button>'}<button class="btn ghost" data-cal="week">Вся неделя</button></div>`);
+    ${e.room ? `<dt>${e.own || isStaff() ? 'Место' : 'Аудитория'}</dt><dd>${e.room}</dd>` : ''}${e.who ? `<dt>${e.own || isStaff() ? 'Кто' : 'Преподаватель'}</dt><dd>${e.who}</dd>` : ''}</dl>
+    <div class="row" style="margin-top:18px;gap:8px;flex-wrap:wrap">${e.own ? `<button class="btn ghost" data-cal="del" data-id="${e.id}">Удалить из расписания</button>` : isStaff() ? '' : '<button class="btn" data-cal="study">Баллы и задания</button>'}<button class="btn ghost" data-cal="week">Вся неделя</button></div>`);
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-cal]');
@@ -2199,12 +2198,19 @@ const sP = spring(0, .002);
 let sRAF = 0, sLast = 0, sFrom = null, sTo = null, sHits = [], sSel = 0, sIndex = null;
 const SEARCH_EXTRA = () => {
   const out = [], have = new Set(), who = {};
-  SUBJ.forEach(([t, w]) => { (who[w] = who[w] || []).push(t); });
-  SUBJ.forEach(([t, w]) => out.push({ g: 'Предметы', t, s: `Расписание · ${w}`, k: 'расписание пара', ic: 'schedule', run: () => go('schedule') }));
+  const subjects = subjectsForAccount();
+  if (!isStaff()) subjects.forEach(([t, w]) => { (who[w] = who[w] || []).push(t); });
+  subjects.forEach(([t, w]) => out.push({ g: isStaff() ? 'Разделы' : 'Предметы', t, s: `Расписание · ${w}`, k: 'расписание', ic: 'schedule', run: () => go('schedule') }));
   Object.entries(who).forEach(([t, l]) => out.push({ g: 'Преподаватели', t, s: l.join(', '), k: 'преподаватель', ic: 'user', run: () => go('schedule') }));
   [['schedule', 'Расписание', 'Пары на день, неделю, месяц', 'календарь пары занятия'], ['study', 'Успеваемость', 'Рейтинг, посещаемость, баллы, сессия, зачётка', 'учёба успеваемость оценки рейтинг посещаемость стипендия рекомендации'],
     ['docs', 'Документы', 'Заказать справку, подать заявление, архив', 'справки заявки документы архив'], ['inbox', 'Уведомления', 'Мессенджер, новости, мероприятия', 'новости чат мессенджер мероприятия афиша'], ['profile', 'Профиль', 'Студбилет и учебные данные', 'аккаунт'], ['settings', 'Настройки', 'Безопасность, уведомления, выход', 'настройки пароль устройства выход'], ['settings', 'Внешний вид', 'Тема, жидкое стекло, часы, фон', 'тема темная светлая стекло часы оформление фон обои картинка фото оттенок'], ['access', 'Универсальный доступ', 'Иконки и порядок дока, крупный текст', 'доступность док иконки текст движение']]
-    .forEach(([id, t, s, k]) => out.push({ g: 'Разделы', t, s, k, ic: { schedule: 'schedule', study: 'grades', docs: 'requests', inbox: 'inbox', profile: 'profile', settings: 'shield', access: 'user' }[id], run: () => go(id) }));
+    .forEach(([id, t, s, k]) => {
+      if (isStaff() && id === 'docs') return;
+      if (isStaff() && id === 'study') [t,s,k] = ['Заявки студентов','Очередь учебного офиса','заявка статус'];
+      if (isStaff() && id === 'profile') [s,k] = ['Должность, подразделение и контакты','аккаунт сотрудник'];
+      if (isStaff() && id === 'schedule') [s,k] = ['Рабочий график','календарь приём'];
+      out.push({ g: 'Разделы', t, s, k, ic: { schedule: 'schedule', study: 'grades', docs: 'requests', inbox: 'inbox', profile: 'profile', settings: 'shield', access: 'user' }[id], run: () => go(id) });
+    });
   return out.filter(it => { const key = it.g + it.t; return !have.has(key) && have.add(key); });
 };
 const GROUP_ORDER = ['Разделы', 'Предметы', 'Преподаватели', 'Студенты', 'Мероприятия', 'Справки и заявления', 'Мои заявки', 'Оценки', 'Дедлайны', 'Уведомления', 'Профиль'];
@@ -2351,8 +2357,9 @@ function openDeepLink() {
 
 /* ===== хранилище (только удобства этого браузера) ===== */
 const LS = {
-  get(k, d){ try{ const v = localStorage.getItem("zk:"+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
-  set(k, v){ try{ localStorage.setItem("zk:"+k, JSON.stringify(v)); }catch(e){} }
+  key(k, login){ return login === "student" ? "zk:"+k : "zk:"+login+":"+k; },
+  get(k, d, login=account){ try{ const v = localStorage.getItem(this.key(k, login)); return v ? JSON.parse(v) : structuredClone(d); }catch(e){ return structuredClone(d); } },
+  set(k, v, login){ try{ localStorage.setItem(this.key(k, login), JSON.stringify(v)); }catch(e){} }
 };
 
 /* ===== иконки ===== */
@@ -2414,39 +2421,49 @@ function weekInfo(){
 }
 
 /* ===== данные студента (пример) ===== */
-const STUDENT = {
+const FIRST_STUDENT = {
   fio:"Демо Студент", short:"Студент", initials:"ДС",
   inst:"Институт информационных технологий", program:"09.03.04 Программная инженерия",
   profile:"Разработка программно-информационных систем", course:3, group:"ПИ-31", form:"очная, бюджет",
   funding:"budget",   // budget — бюджет (видна стипендия), contract — договор
-  id:"DEMO-001", email:"student@example.invalid", curator:"Демо Куратор"
+  id:"DEMO-001", email:"student@example.invalid", curator:"Демо Куратор",
+  enroll:"2024", sex:"Женский", personalEmail:"demo@example.invalid", curatorEmail:"o.lebedeva@example.invalid"
 };
+const SECOND_STUDENT = {
+  fio:"Артём Власов", short:"Артём", initials:"АВ", inst:"Институт цифровых технологий",
+  program:"09.03.03 Прикладная информатика", profile:"Информационные системы в управлении",
+  course:3, group:"ПИн-32", form:"очная, договор", funding:"contract", id:"DEMO-027",
+  email:"a.vlasov@example.invalid", curator:"Елена Мельникова", enroll:"2024",
+  sex:"Мужской", personalEmail:"vlasov.demo@example.invalid", curatorEmail:"e.melnikova@example.invalid"
+};
+const EMPLOYEE = {fio:"Ирина Волкова", initials:"ИВ", id:"EMP-014", email:"i.volkova@example.invalid"};
+let STUDENT = FIRST_STUDENT;
 /* три окна профиля: [подпись, значение, скрыто по умолчанию] */
-const PROFILE_INFO = [
+const profileInfo = () => [
   {id:"main", t:"Основное", rows:[
-    ["Номер зачётной книжки", "DEMO-001-ПИ", true],
+    ["Номер зачётной книжки", STUDENT.id, true],
     ["Факультет", STUDENT.inst],
     ["Уровень подготовки", "Бакалавриат"],
     ["Направление подготовки", STUDENT.program],
     ["Направленность (профиль)", STUDENT.profile],
-    ["Форма обучения", "Очная, бюджет"],
-    ["Год поступления", "2024"],
+    ["Форма обучения", STUDENT.form],
+    ["Год поступления", STUDENT.enroll],
     ["Курс", STUDENT.course + " курс"],
     ["Статус обучения", "Обучается"]]},
   {id:"personal", t:"Личное", rows:[
     ["Корпоративная почта", STUDENT.email, true],
-    ["Логин для учебных сервисов", "demo.student", true],
+    ["Логин для учебных сервисов", account, true],
     ["Пароль от почты", "Не задан", true],
     ["Дата рождения", "Не указана"],
     ["Адрес проживания", "Не указан"],
-    ["Пол", "Женский"]]},
+    ["Пол", STUDENT.sex]]},
   {id:"contacts", t:"Контакты", rows:[
     ["Мобильный телефон", "Не указан"],
-    ["Личная почта", "demo@example.invalid"],
+    ["Личная почта", STUDENT.personalEmail],
     ["Telegram", "Не указан"],
     ["ВКонтакте", "Не указан"],
     ["Экстренный контакт", "Не указан"],
-    ["Куратор группы", STUDENT.curator + " · o.lebedeva@example.invalid"]]}
+    ["Куратор группы", STUDENT.curator + " · " + STUDENT.curatorEmail]]}
 ];
 const SLOTS = [null,["08:30","10:00"],["10:10","11:40"],["11:50","13:20"],["14:00","15:30"],["15:40","17:10"],["17:20","18:50"]];
 const TYPE = { lec:["Лекция",""], prac:["Практика","accent"], lab:["Лабораторная","accent"], pe:["Занятие",""] };
@@ -2481,7 +2498,7 @@ const SCHEDULE = {
   ]
 };
 
-const CURRENT = [
+const FIRST_CURRENT = [
   {s:"Базы данных", ctrl:"Экзамен", date:"2027-01-12", comps:[["Посещение",9,10],["Лабораторные работы",30,40],["Контрольные",18,20],["Экзамен",null,30]],
    todo:[{t:"ЛР № 6", d:"2026-11-14", pts:6}], status:"ok", hint:"Сдайте ЛР № 6 до 14 ноября — это ещё +6 баллов. На «хорошо» на экзамене хватит 19 из 30."},
   {s:"Теория вероятностей и мат. статистика", ctrl:"Экзамен", date:"2027-01-16", comps:[["Посещение",8,10],["Домашние задания",22,30],["Контрольные",11,30],["Экзамен",null,30]],
@@ -2499,12 +2516,25 @@ const CURRENT = [
   {s:"Физическая культура", ctrl:"Зачёт", date:"2026-12-21", comps:[["Посещения (из 24)",18,24],["Нормативы",null,76]],
    status:"ok", hint:"Осталось посетить 6 занятий. Нормативы — 7 декабря."}
 ];
-const RECORD = {   // [дисциплина, форма контроля, итог по 100-балльной шкале]
+const FIRST_RECORD = {   // [дисциплина, форма контроля, итог по 100-балльной шкале]
   1:[["Математический анализ","Экзамен",84],["Алгебра и геометрия","Экзамен",93],["Программирование","Экзамен",96],["История России","Зачёт",78],["Английский язык","Зачёт",82],["Введение в профессию","Диф. зачёт",91]],
   2:[["Математический анализ","Экзамен",86],["Дискретная математика","Экзамен",92],["Алгоритмы и структуры данных","Экзамен",97],["Физика","Экзамен",79],["Английский язык","Зачёт",85],["Философия","Зачёт",74]],
   3:[["Объектно-ориентированное программирование","Экзамен",94],["Операционные системы","Экзамен",83],["Дифференциальные уравнения","Экзамен",81],["Экономика","Диф. зачёт",92],["Английский язык","Зачёт",88]],
   4:[["Архитектура ЭВМ","Экзамен",95],["Алгоритмы на графах","Экзамен",91],["Технологии программирования","Экзамен",98],["Безопасность жизнедеятельности","Зачёт",90],["Учебная практика","Диф. зачёт",96]]
 };
+const SECOND_CURRENT = [
+  {s:"Прикладная статистика", ctrl:"Экзамен", date:"2027-01-14", comps:[["Посещение",10,10],["Практические работы",29,40],["Контрольные",13,20],["Экзамен",null,30]], todo:[{t:"Отчёт по статистике",d:"2026-12-04",pts:8}], status:"ok"},
+  {s:"Интерфейсы", ctrl:"Диф. зачёт", date:"2026-12-24", comps:[["Посещение",8,10],["Макеты",41,55],["Защита",null,35]], finDate:"2026-12-18", status:"ok"},
+  {s:"Управление проектами", ctrl:"Экзамен", date:"2027-01-19", comps:[["Посещение",6,10],["Кейсы",25,60],["Экзамен",null,30]], status:"risk"},
+  {s:"Английский язык", ctrl:"Зачёт", date:"2026-12-22", comps:[["Посещение",9,10],["Задания",54,60],["Итоговый тест",23,30]], status:"done"}
+];
+const SECOND_RECORD = {
+  1:[["Основы информатики","Экзамен",79],["Экономика","Экзамен",83],["Английский язык","Зачёт",91]],
+  2:[["Структуры данных","Экзамен",85],["Математика","Экзамен",77],["Право","Зачёт",82]],
+  3:[["Моделирование процессов","Экзамен",89],["Теория систем","Экзамен",72],["Анализ данных","Диф. зачёт",80]],
+  4:[["Информационные системы","Экзамен",75],["Аналитика бизнеса","Экзамен",84],["Учебная практика","Диф. зачёт",78]]
+};
+let CURRENT = FIRST_CURRENT, RECORD = FIRST_RECORD;
 // 100-балльная шкала: 91+ отлично, 76+ хорошо, 61+ удовлетворительно; у зачёта 61+ — «зачтено»
 const markOf = (b, ctrl) => ctrl==="Зачёт" ? (b>=61 ? ["зачтено","m5"] : ["не зачтено","m2"])
   : b>=91 ? ["отлично","m5"] : b>=76 ? ["хорошо","m4"] : b>=61 ? ["удовл.","m3"] : ["неуд.","m2"];
@@ -2554,7 +2584,7 @@ const DEFAULT_CHAT = [
   {me:false, t:"Здравствуйте, Анна. Можно, если совпадает объём часов. Подайте заявление «Перезачёт дисциплин» и приложите скан диплома с приложением — я проверю за 2–3 дня.", w:"3 ноя, 14:31", who:"Ирина Волкова, методист"}
 ];
 /* мессенджер: деканат хранит переписку в S.chat (как раньше), у остальных к примерам добавляются свои сообщения из S.chats */
-const CHATS = [
+const FIRST_CHATS = [
   {id:"dean", n:"Деканат ИИТ", ini:"ИВ", role:"Ирина Волкова, методист · отвечает за 2–3 часа", unread:0,
     info:[["Кабинет","214, корпус Б"],["Приём","пн–чт 10:00–16:00, пт до 15:00"],["Обед","13:00–13:45"],["Телефон","Не указан"],["Почта","dekanat.iit@example.invalid"]],
     reply:"Получила, посмотрю и отвечу сегодня до 16:00."},
@@ -2604,6 +2634,36 @@ const PEOPLE = [
   reply: k==="teacher" ? "Добрый день. Посмотрю и отвечу после занятий." : "Привет! Я на паре, отвечу чуть позже."}));
 const personChat = p => ({id:p.id, n:p.n, ini:p.ini, role:p.role, unread:0, info:p.info, reply:p.reply, msgs:[], person:p.k});
 
+const SECOND_REQS = [
+  {id:"З-2611-0714", t:"Академическая справка", sub:"Для перевода · бумажная", step:1, date:"2026-11-20", info:"Учебный офис готовит выписку"},
+  {id:"З-2610-0663", t:"Перезачёт дисциплин", sub:"Заявление · онлайн", step:3, date:"2026-10-19", info:"Перезачёт согласован"}
+];
+const STAFF_REQS = [
+  {id:"З-2611-0821", t:"Индивидуальный график", sub:"Мария Белова · ПИ-21", step:0, date:"2026-11-21"},
+  {id:"З-2611-0829", t:"Академическая справка", sub:"Денис Лапин · ПИн-32", step:1, date:"2026-11-22"}
+];
+const SECOND_CHATS = [
+  {...FIRST_CHATS.find(c=>c.id==="dean"), unread:0},
+  {id:"curator", n:SECOND_STUDENT.curator, ini:"ЕМ", role:"куратор группы ПИн-32", unread:1, reply:"Уточните, пожалуйста, вопрос.",
+    info:[["Почта",SECOND_STUDENT.curatorEmail]], msgs:[{me:false,t:"Артём, материалы по управлению проектами появились в курсе.",w:"20 ноя, 11:05"}]},
+  {id:"group", n:"ПИн-32 · группа", ini:"32", role:"21 участник", unread:1, group:true, info:[],
+    msgs:[{me:false,who:"Тимур",t:"Загрузил общий макет в папку команды.",w:"20 ноя, 15:30"}]}
+];
+const STAFF_CHATS = [
+  {id:"office", n:"Учебный офис", ini:"УО", role:"рабочий чат", unread:1, group:true, info:[["Кабинет","214"]],
+    msgs:[{me:false,who:"Ольга",t:"Проверьте очередь заявок перед приёмом студентов.",w:"21 ноя, 09:05"}]},
+  {id:"tutor", n:"Кафедра прикладной информатики", ini:"ПИ", role:"секретарь кафедры", unread:0, info:[],
+    reply:"Уточните, пожалуйста, детали вопроса.", msgs:[{me:false,t:"Список тем согласован. Сообщите, если нужны правки.",w:"20 ноя, 17:10"}]}
+];
+const SECOND_NOTES = [
+  {id:"stats", k:"deadline", t:"Отчёт по прикладной статистике", p:"Загрузите отчёт до 4 декабря.", when:"21 ноября", go:"grades", imp:true},
+  {id:"transfer", k:"docs", t:"Выписка оценок в работе", p:"Следите за статусом в разделе «Документы».", when:"20 ноября", go:"requests"}
+];
+const STAFF_NOTES = [
+  {id:"queue", k:"docs", t:"Новые заявки студентов", p:"Откройте очередь и возьмите обращение в работу.", when:"22 ноября", go:"grades", imp:true}
+];
+let CHATS, NOTES;
+
 /* доска мероприятий: [id, через сколько дней, начало, конец, категория, название, место, организатор, совместно с, описание, уже идут] */
 const EVENTS = [
   ["e1",2,"18:00","20:30","Карьера","Карьерный вечер: как попасть на стажировку в IT","Атриум, корпус А","Центр карьеры","Технопарк «Северный»","Выпускники и тимлиды расскажут, как проходят отборы, что смотреть в резюме и как готовиться к техническому интервью. После — разбор резюме один на один.",86],
@@ -2634,14 +2694,16 @@ const UNIS = [
 ];
 
 /* ===== состояние ===== */
-const S = {
+function loadState(){
+  const staff = isStaff(), second = account === "student2";
+  return {
   view:"today",
   day:null,
   gradeTab:"now",
   sem:4,
   noteFilter:"all",
   inboxTab:"chat",     // уведомления: chat — мессенджер, notes — новости
-  chatId:"dean", chatOpen:false, typing:null,
+  chatId:CHATS[0].id, chatOpen:false, typing:null,
   chats: LS.get("chats", {}),
   chatRead: LS.get("chatRead", []),
   people: LS.get("people", []),   // с кем начата переписка через поиск
@@ -2650,18 +2712,31 @@ const S = {
   openSubj:{},
   infoTab:0,           // окно профиля: 0 основное, 1 личное, 2 контакты
   shown:{},            // какие скрытые поля открыты глазком
-  reqs: LS.get("reqs", DEFAULT_REQS),
+  reqs: LS.get("reqs", staff ? STAFF_REQS : second ? SECOND_REQS : DEFAULT_REQS),
   read: LS.get("read", []),
-  chat: LS.get("chat", DEFAULT_CHAT),
-  devices: LS.get("devices", DEFAULT_DEVICES),
+  chat: LS.get("chat", second ? [{me:false,who:"Ирина",t:"Артём, ваша заявка на академическую справку принята.",w:"20 ноя, 12:20"}] : staff ? [] : DEFAULT_CHAT),
+  devices: LS.get("devices", second || staff ? DEFAULT_DEVICES.slice(0,1).map(d=>({...d,n:"Текущий браузер"})) : DEFAULT_DEVICES),
   tfa: LS.get("tfa", true),
   prefs: LS.get("prefs", {sched:true, dead:true, news:false, phone:false}),
-  uni: LS.get("uni", "green"),
-  authed: LS.get("authed", true)
-};
-S.people.forEach(id => { const p = PEOPLE.find(x=>x.id===id); if(p && !CHATS.some(c=>c.id===id)) CHATS.unshift(personChat(p)); });
-const save = () => { LS.set("people",S.people); LS.set("chats",S.chats); LS.set("chatRead",S.chatRead); LS.set("reqs",S.reqs); LS.set("read",S.read); LS.set("chat",S.chat); LS.set("devices",S.devices); LS.set("tfa",S.tfa); LS.set("prefs",S.prefs); LS.set("uni",S.uni); LS.set("authed",S.authed); };
-const unread = () => DEFAULT_NOTES.filter(n => !S.read.includes(n.id)).length;
+  uni: LS.get("uni", "green")
+  };
+}
+let S;
+function signIn(){
+  const second = account === "student2";
+  STUDENT = second ? SECOND_STUDENT : FIRST_STUDENT;
+  CURRENT = second ? SECOND_CURRENT : FIRST_CURRENT;
+  RECORD = second ? SECOND_RECORD : FIRST_RECORD;
+  NOTES = isStaff() ? STAFF_NOTES : second ? SECOND_NOTES : DEFAULT_NOTES;
+  CHATS = [...(isStaff() ? STAFF_CHATS : second ? SECOND_CHATS : FIRST_CHATS)];
+  S = loadState();
+  S.people.forEach(id => { const p = PEOPLE.find(x=>x.id===id); if(p && !CHATS.some(c=>c.id===id)) CHATS.unshift(personChat(p)); });
+}
+signIn();
+function save(state=S, login=account){
+  for(const key of ["people","chats","chatRead","reqs","read","chat","devices","tfa","prefs","uni"]) LS.set(key,state[key],login);
+}
+const unread = () => NOTES.filter(n => !S.read.includes(n.id)).length;
 
 /* шапка раздела: «назад» + заголовок (+ что-то справа) */
 const BACK = `<button class="back" data-back aria-label="Назад"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg></button>`;
@@ -2669,10 +2744,6 @@ const pageH = (t, right="") => `<div class="page-h">${BACK}<h1>${t}</h1>${right}
 
 /* ===== успеваемость: вычисления ===== */
 const sumOf = c => c.comps.reduce((s,[,g]) => s + (g||0), 0);
-function recordAvg(){
-  const all = Object.values(RECORD).flat().map(r=>r[2]);
-  return all.reduce((a,b)=>a+b,0)/all.length;
-}
 
 /* ===== рекомендации: собираются из баллов, сроков и посещаемости предмета ===== */
 const fmtD = d => { const x = new Date(d), t = now(); t.setHours(0,0,0,0); const n = Math.round((x - t)/864e5);
@@ -2737,14 +2808,15 @@ function scholarship(){
 }
 /* ===== рейтинг и посещаемость ===== */
 function ratingRing(){
-  const all = Object.values(RECORD).flat(), avg = Math.round(recordAvg()), C = 2*Math.PI*52;
+  const term = Math.max(...Object.keys(RECORD).map(Number)), all = RECORD[term];
+  const avg = Math.round(all.reduce((total,r)=>total+r[2],0)/all.length), C = 2*Math.PI*52;
   const cnt = k => all.filter(([,c,b])=>markOf(b,c)[0]===k).length;
   const parts = [["отлично","m5"],["хорошо","m4"],["удовл.","m3"],["зачтено","m5"]].map(([k,m])=>[k,m,cnt(k)]).filter(x=>x[2]);
   return `<section class="card gr-ring" aria-label="Средний балл ${avg} из 100">
     <div class="ring"><svg viewBox="0 0 132 132" aria-hidden="true"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--h3)"/><stop offset="1" stop-color="var(--h1)"/></linearGradient></defs>
       <circle cx="66" cy="66" r="52" class="rt"/><circle cx="66" cy="66" r="52" class="ra" style="--c:${C.toFixed(1)};--o:${(C*(1-avg/100)).toFixed(1)}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C*(1-avg/100)).toFixed(1)}"/></svg>
       <div class="ring-c"><b>${avg}</b><span>из 100</span></div></div>
-    <div class="ring-side"><div><small>Средний балл зачётки</small><b>${markOf(avg,"Экзамен")[0]}</b></div>
+    <div class="ring-side"><div><small>Средний балл за ${term} семестр</small><b>${markOf(avg,"Экзамен")[0]}</b></div>
       <div class="ring-marks">${parts.map(([k,m,n])=>`<span><i class="mark-cell ${m}">${n}</i>${k}</span>`).join("")}</div></div>
   </section>`;
 }
@@ -2758,7 +2830,11 @@ function attendance(){
     days.push({d:new Date(d), iso, n: d < new Date(2026,8,1) || HOL.includes(iso) ? 0 : (SCHEDULE[wd]||[]).length, past: d <= t0, miss:0}); }
   // пропуски раскладываются по прошедшим дням детерминированно, чтобы сумма совпала с баллами за посещение
   let seed = 7; const rnd = () => (seed = (seed*16807) % 2147483647) / 2147483647;
-  const past = days.filter(x=>x.past && x.n); for(let k=0; k<missed && past.length; ){ const x = past[Math.floor(rnd()*past.length)]; if(x.miss < x.n){ x.miss++; k++; } }
+  const past = days.filter(x=>x.past && x.n);
+  for(let k=0; k<missed && past.length; k++){
+    const i = Math.floor(rnd()*past.length), x = past[i];
+    if(++x.miss === x.n) past.splice(i,1);
+  }
   const weeks = Math.ceil(days.length/6), MN = ["сен","окт","ноя","дек"];
   const cells = days.map(x=>{ const lvl = !x.n ? "e" : !x.past ? "f" : x.miss===x.n ? "m" : x.miss ? "p" : "a" + Math.min(4, x.n);
     const lab = `${x.d.getDate()} ${MONS[x.d.getMonth()]}: ${!x.n?"занятий нет":!x.past?`${x.n} ${plural(x.n,"пара","пары","пар")} впереди`:`${x.n-x.miss} из ${x.n} ${plural(x.n,"пары","пар","пар")}`}`;
@@ -2772,7 +2848,7 @@ function attendance(){
 }
 
 function vGrades(){
-  const avg = recordAvg();
+  if(isStaff()) return vStaffRequests();
   const risks = CURRENT.filter(c=>c.status==="risk").length;
   const auto = CURRENT.filter(c=>c.status==="auto"||c.status==="done").length;
   const sessionDays = daysTo("2026-12-21");
@@ -2838,6 +2914,20 @@ function vRequests(){
   </div>`;
 }
 
+function vStaffRequests(){
+  return `<div class="view">
+    ${pageH("Заявки студентов")}
+    <section class="card">
+      <div class="card-h"><h2>Очередь учебного офиса</h2></div>
+      <div class="list">${S.reqs.map(r=>`<div class="row" style="flex-wrap:wrap;gap:8px">
+        <span class="grow"><b>${esc(r.t)}</b><br><small>${esc(r.sub)} · ${esc(r.id)}</small></span>
+        <span class="chip">${STEPS[r.step]}</span>
+        ${r.step<2?`<button class="btn sm" data-action="staff-step" data-id="${esc(r.id)}">${r.step===0?"Взять в работу":"Отметить готовой"}</button>`:""}
+      </div>`).join("")}</div>
+    </section>
+  </div>`;
+}
+
 /* ===== окно выбора: кнопка «перетекает» в стеклянное окно по центру ===== */
 const SRCH = '<svg class="i s" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>';
 function applicationGuide(c) {
@@ -2860,6 +2950,7 @@ function pickItems(k){
       <p class="err" hidden></p><button class="btn block" type="submit">${c.app?"Подать заявление":"Заказать справку"}</button></form>`}));
 }
 function openPicker(k, openId){
+  if(isStaff()) return;
   const from = document.querySelector(`[data-action="picker"][data-k="${k}"]`), P = PICK[k], list = pickItems(k);
   const root = document.getElementById("sheetRoot");
   root.innerHTML = `<div class="gm-wrap" data-action="closesheet"><div class="gm glass" role="dialog" aria-modal="true" aria-label="${P.title}" data-k="${k}">
@@ -2907,7 +2998,7 @@ function gmToggle(id, open){
 const NOTE_ICON = {schedule:"schedule", deadline:"clock", docs:"doc", dean:"flag", news:"news", security:"shield"};
 function vInbox(){
   const f = S.noteFilter;
-  const list = DEFAULT_NOTES.filter(n => f==="all" ? true : f==="imp" ? n.imp : f==="schedule" ? n.k==="schedule" : f==="deadline" ? n.k==="deadline"||n.k==="dean" : n.k==="news"||n.k==="docs"||n.k==="security");
+  const list = NOTES.filter(n => f==="all" ? true : f==="imp" ? n.imp : f==="schedule" ? n.k==="schedule" : f==="deadline" ? n.k==="deadline"||n.k==="dean" : n.k==="news"||n.k==="docs"||n.k==="security");
   const notesHtml = `<div class="row" style="gap:8px"><div class="seg grow" role="group" aria-label="Фильтр">${[["all","Все"],["imp","Важное"],["schedule","Расписание"],["deadline","Деканат"],["other","Прочее"]].map(([k,n])=>`<button data-action="nf" data-k="${k}" aria-pressed="${f===k}">${n}</button>`).join("")}</div></div>
     <section class="card"><div class="card-h"><h2>${list.length} ${plural(list.length,"уведомление","уведомления","уведомлений")}</h2>${unread()?`<button class="link" data-action="readall">Прочитать все</button>`:""}</div>
     <div class="list">${list.map(n=>{ const r=S.read.includes(n.id); return `<button class="note-item k-${n.k} ${r?"read":""}" data-action="note" data-id="${n.id}"><span class="ic">${ic(NOTE_ICON[n.k],"i s")}</span><span style="min-width:0"><h3>${r?"":'<span class="unread-dot"></span>'}${esc(n.t)}</h3><p>${esc(n.p)}</p><p class="small" style="margin-top:4px">${esc(n.when)}${n.imp?' · <span style="color:var(--alert);font-weight:600">важно</span>':""}</p></span></button>`; }).join("") || '<div class="empty">Здесь пока пусто.</div>'}</div></section>`;
@@ -2995,15 +3086,32 @@ function vMessenger(){
     </section>
   </div>`;
 }
+function demoReply(c, msg){
+  const text = (msg.t||"").toLowerCase().replace(/ё/g,"е").trim();
+  const peer = c.person==="student";
+  if(msg.file) return peer ? "Вижу вложение. Что в нём нужно посмотреть?" : "Вложение получил учебный чат. Уточните, что нужно проверить.";
+  if(/ссылк|документ|материал|файл|конспект/.test(text))
+    return peer ? "Какой именно документ нужен? Напиши название, чтобы я понял, какую ссылку искать." : "Подскажите название документа или курса, чтобы уточнить, где находится нужная ссылка.";
+  if(/справк|заявлен/.test(text))
+    return c.id==="dean" ? "Если заявка уже подана, пришлите её номер из раздела «Документы». Если нет, уточните, какая справка нужна." : "Какую справку или заявление вы имеете в виду?";
+  if(/пересдач|дедлайн|сда(ть|ча)|оценк|балл/.test(text))
+    return peer ? "По какому предмету? Могу подсказать, где посмотреть условия." : "Уточните дисциплину и задание, чтобы разобраться с этим вопросом.";
+  if(/консультац|встреч|расписан|аудитори/.test(text))
+    return peer ? "На какой день и по какому предмету уточняешь?" : "Уточните день и дисциплину. Если ищете часы консультаций, откройте информацию о контакте.";
+  if(/^спасибо[!.\s]*$/.test(text)) return "Пожалуйста!";
+  if(/^(привет|здравствуйте|добрый день)[!.\s]*$/.test(text)) return peer ? "Привет! Чем помочь?" : "Здравствуйте! Чем могу помочь?";
+  return peer ? "Можешь уточнить, что именно тебе нужно?" : "Уточните, пожалуйста, детали вопроса.";
+}
 function sendChat(msg){
-  const id = S.chatId, c = CHATS.find(x=>x.id===id);
+  const state = S, id = S.chatId, c = CHATS.find(x=>x.id===id);
   if(id==="dean") S.chat.push(msg); else (S.chats[id] = S.chats[id] || []).push(msg);
   save(); render();
   if(!c.reply || S.typing) return;
-  setTimeout(()=>{ S.typing = id; if(S.view==="inbox") render(); }, 600);
-  setTimeout(()=>{ S.typing = null; const r = {me:false, t:c.reply, w:stamp(), who:c.role.split(" · ")[0]};
+  setTimeout(()=>{ if(S!==state) return; S.typing = id; if(S.view==="inbox") render(); }, 600);
+  setTimeout(()=>{ if(S!==state) return; S.typing = null; const r = {me:false, t:demoReply(c,msg), w:stamp(), who:c.role.split(" · ")[0]};
     if(id==="dean") S.chat.push(r); else (S.chats[id] = S.chats[id] || []).push(r);
-    save(); if(S.view==="inbox") render(); if(S.view!=="inbox" || S.chatId!==id) toast(`${c.n}: новое сообщение`); }, 2400);
+    save(); if(document.getElementById("app").hidden) return;
+    if(S.view==="inbox") render(); if(S.view!=="inbox" || S.chatId!==id) toast(`${c.n}: новое сообщение`); }, 2400);
 }
 
 /* ===== доска мероприятий ===== */
@@ -3047,7 +3155,19 @@ function infoRow([label, val, secret], key){
       <button class="iconbtn sm" data-action="pfeye" data-k="${key}" aria-pressed="${open}" aria-label="${open?"Скрыть":"Показать"}: ${label}">${ic(open?"eyeoff":"eye","i s")}</button></span>` : ""}</dd></div>`;
 }
 function vProfile(){
+  if(isStaff()) return `<div class="view">
+    ${pageH("Профиль сотрудника")}
+    <div class="pf-top">
+      <section class="idcard" aria-label="Удостоверение сотрудника">
+        <div class="who"><span class="ph">${EMPLOYEE.initials}</span><div><span class="eyebrow" style="color:inherit">Сотрудник № ${EMPLOYEE.id}</span><h2>${EMPLOYEE.fio}</h2></div></div>
+        <div class="grid"><div><small>Должность</small>Методист</div><div><small>Подразделение</small>Учебный офис</div><div><small>Кабинет</small>214-Б</div></div>
+      </section>
+      <div class="pf-docs"><button class="pf-doc" data-go="study">${ic("requests")}<span class="grow"><b>Заявки студентов</b><small>Открыть очередь учебного офиса</small></span>${ic("arrow","i s")}</button></div>
+    </div>
+    <section class="card"><h2>Рабочие контакты</h2><dl class="pf-list">${infoRow(["Корпоративная почта", EMPLOYEE.email], "staff-email")}</dl></section>
+  </div>`;
   if(S.view==="requests") return vRequests();
+  const sections = profileInfo();
   const cnt = k => S.reqs.filter(r=>r.step<3 && kindOf(r)===k).length;
   const docBtn = (k, t, sub) => { const n = k==="all" ? S.reqs.filter(r=>r.step<3).length : cnt(k);
     return `<button class="pf-doc" data-action="docs" ${k==="all"?"":`data-k="${k}"`}>${ic(k==="app"?"requests":k==="all"?"grades":"doc","i")}<span class="grow"><b>${t}</b><small>${sub}</small></span>${n?`<span class="chip mark">${n}</span>`:""}${ic("arrow","i s")}</button>`; };
@@ -3056,7 +3176,7 @@ function vProfile(){
     <div class="pf-top">
       <section class="idcard" aria-label="Студенческий билет">
         <div class="who"><span class="ph">${STUDENT.initials}</span><div style="min-width:0"><span class="eyebrow" style="color:inherit;opacity:.7">Студенческий билет № ${STUDENT.id}</span><h2>${STUDENT.fio}</h2></div></div>
-        <div class="grid"><div><small>Институт</small>ИИТ</div><div><small>Группа</small>${STUDENT.group}</div><div><small>Курс</small>${STUDENT.course}</div><div><small>Действует до</small>31.08.2027</div></div>
+        <div class="grid"><div><small>Институт</small>${account==="student2"?"ИЦТ":"ИИТ"}</div><div><small>Группа</small>${STUDENT.group}</div><div><small>Курс</small>${STUDENT.course}</div><div><small>Действует до</small>31.08.2027</div></div>
         <button class="btn" data-action="card" style="background:var(--mark);color:var(--mark-ink)">${ic("card","i s")}Показать QR для входа</button>
       </section>
       <div class="pf-docs">
@@ -3066,8 +3186,8 @@ function vProfile(){
       </div>
     </div>
     <section class="card pf-info" aria-label="Данные студента">
-      <div class="seg pf-tabs" role="tablist" aria-label="Окна профиля">${PROFILE_INFO.map((p,i)=>`<button role="tab" data-action="pftab" data-i="${i}" aria-pressed="${S.infoTab===i}" aria-selected="${S.infoTab===i}">${p.t}</button>`).join("")}</div>
-      <div class="pf-track" id="pfTrack">${PROFILE_INFO.map(p=>`<div class="pf-pane" role="tabpanel" aria-label="${p.t}"><h2>${p.t==="Основное"?"Основная информация":p.t==="Личное"?"Персональная информация":"Контакты"}</h2>
+      <div class="seg pf-tabs" role="tablist" aria-label="Окна профиля">${sections.map((p,i)=>`<button role="tab" data-action="pftab" data-i="${i}" aria-pressed="${S.infoTab===i}" aria-selected="${S.infoTab===i}">${p.t}</button>`).join("")}</div>
+      <div class="pf-track" id="pfTrack">${sections.map(p=>`<div class="pf-pane" role="tabpanel" aria-label="${p.t}"><h2>${p.t==="Основное"?"Основная информация":p.t==="Личное"?"Персональная информация":"Контакты"}</h2>
         <dl class="pf-list">${p.rows.map((r,j)=>infoRow(r, p.id+j)).join("")}</dl></div>`).join("")}</div>
       <p class="muted small" style="margin-top:12px">Нашли ошибку в данных? <button class="link" data-go="inbox" data-tab="chat">Напишите методисту</button></p>
     </section>
@@ -3181,10 +3301,11 @@ function pfMount(){
 /* ===== данные для поиска на главной: {g группа, t, s подпись, k ключевые слова, ic иконка, run} ===== */
 function searchItems(){
   const out = [], CTRL = {lec:"лекция", prac:"практика", lab:"лабораторная", pe:"занятие"};
+  if(isStaff()) return S.reqs.map(r=>({g:"Мои заявки", t:r.t, s:`${r.sub} · ${STEPS[r.step]}`, k:r.id, ic:"requests", run(){ go("study"); }}));
   CURRENT.forEach((c,i) => out.push({g:"Предметы", t:c.s, s:`${c.ctrl} · ${sumOf(c)} баллов`, k:"успеваемость оценки баллы", ic:"grades",
     run(){ S.gradeTab = "now"; S.openSubj[i] = true; go("grades"); }}));
   const who = {};
-  Object.values(SCHEDULE).flat().forEach(l => { (who[l.who] = who[l.who] || new Set()).add(l.s);
+  (account==="student" ? Object.values(SCHEDULE).flat() : []).forEach(l => { (who[l.who] = who[l.who] || new Set()).add(l.s);
     if(!CURRENT.some(c=>c.s===l.s)) out.push({g:"Предметы", t:l.s, s:`${TYPE[l.t][0]} · ${l.who}`, k:CTRL[l.t]+" расписание", ic:"schedule", run(){ go("schedule"); }}); });
   Object.entries(who).forEach(([n,set]) => out.push({g:"Преподаватели", t:n, s:[...set].join(", "), k:"преподаватель", ic:"user", run(){ go("schedule"); }}));
   CATALOG.forEach(c => out.push({g:"Справки и заявления", t:c.t, s:`${c.d} Срок: ${c.sla.toLowerCase()}.`, k:c.app?"заявление":"справка заказать", ic:"doc",
@@ -3192,8 +3313,8 @@ function searchItems(){
   S.reqs.forEach(r => out.push({g:"Мои заявки", t:r.t, s:`${r.id} · ${STEPS[r.step]}`, k:"заявка статус "+r.id, ic:"requests", run(){ go("requests"); }}));
   Object.entries(RECORD).forEach(([sem,list]) => list.forEach(([n,ctrl,g]) => out.push({g:"Оценки", t:n, s:`${sem} семестр · ${ctrl} · ${g} из 100, ${markOf(g,ctrl)[0]}`, k:"зачётка оценка",
     ic:"grades", run(){ S.gradeTab = "record"; S.sem = +sem; go("grades"); }})));
-  DEADLINES.forEach(d => out.push({g:"Дедлайны", t:d.t, s:`${fmtDate(new Date(d.d))} · ${d.s}`, k:"дедлайн срок", ic:"clock", run(){ go("grades"); }}));
-  DEFAULT_NOTES.forEach(n => out.push({g:"Уведомления", t:n.t, s:n.p, k:"уведомление", ic:NOTE_ICON[n.k],
+  (account==="student" ? DEADLINES : CURRENT.flatMap(c=>(c.todo||[]).map(d=>({...d,s:c.s})))).forEach(d => out.push({g:"Дедлайны", t:d.t, s:`${fmtDate(new Date(d.d))} · ${d.s}`, k:"дедлайн срок", ic:"clock", run(){ go("grades"); }}));
+  NOTES.forEach(n => out.push({g:"Уведомления", t:n.t, s:n.p, k:"уведомление", ic:NOTE_ICON[n.k],
     run(){ if(!S.read.includes(n.id)){ S.read.push(n.id); save(); } go(n.go || "inbox"); }}));
   PEOPLE.forEach(p => out.push({g: p.k==="teacher" ? "Преподаватели" : "Студенты", t:p.n, s:p.role + " · написать", k:"написать сообщение чат мессенджер " + p.info.map(r=>r[1]).join(" "), ic:"user",
     run(){ if(!CHATS.some(c=>c.id===p.id)){ CHATS.unshift(personChat(p)); S.people.push(p.id); } S.inboxTab = "chat"; S.chatId = p.id; S.chatOpen = true; save(); go("inbox"); }}));
@@ -3204,7 +3325,7 @@ function searchItems(){
     {g:"Настройки", t:"Безопасность и устройства", s:"Сеансы, код подтверждения", k:"пароль устройства выход", ic:"shield", run(){ go("settings"); }});
   return out;
 }
-window.ZK = { show(v){ S.view = v; render(); }, picker: k => openPicker(k), order: showOrder, inbox(arg){ if(arg==="news"){ S.inboxTab = "notes"; } else if(arg==="events"){ S.inboxTab = "events"; } else if(CHATS.some(c=>c.id===arg)){ S.inboxTab = "chat"; S.chatId = arg; S.chatOpen = true; if(!S.chatRead.includes(arg)) S.chatRead.push(arg); } render(); }, unread, student: STUDENT, searchItems, icon: n => ic(n), sheet: openSheet, closeSheet: () => closeSheet(), toast };
+window.ZK = { signIn, show(v){ S.view = v; render(); }, picker: k => openPicker(k), order: showOrder, inbox(arg){ if(arg==="news"){ S.inboxTab = "notes"; } else if(arg==="events"){ S.inboxTab = "events"; } else if(CHATS.some(c=>c.id===arg)){ S.inboxTab = "chat"; S.chatId = arg; S.chatOpen = true; if(!S.chatRead.includes(arg)) S.chatRead.push(arg); } render(); }, unread, get student(){return STUDENT;}, searchItems, icon: n => ic(n), sheet: openSheet, closeSheet: () => closeSheet(), toast };
 /* ===== тост ===== */
 let toastT;
 function toast(t){
@@ -3272,6 +3393,7 @@ function orderFields(c){
       <div class="field"><label for="f-file-${id}">Документы</label><input type="file" id="f-file-${id}" multiple style="padding:10px 14px;height:auto"><span class="muted small">PDF или фото, до 10 МБ каждый</span></div>`;
 }
 function submitOrder(f){
+  if(isStaff()) return;
   const c = CATALOG.find(x=>x.id===f.dataset.id);
   if(c.app && !f.elements.why.value.trim()){ const er = f.querySelector(".err"); er.textContent = "Опишите причину — без неё методист не сможет рассмотреть заявление."; er.hidden = false; f.elements.why.focus(); return; }
   const fmt = f.querySelector('input[name="fmt"]:checked'), isE = !!fmt && fmt.value === "e", to = f.elements.to, d = now();
@@ -3281,12 +3403,23 @@ function submitOrder(f){
   S.reqs.unshift(r); save(); closeSheet(true); go("requests");
   toast(c.app ? "Заявление подано" : "Справка заказана");
   if(isE){
-    setTimeout(()=>{ r.step = 1; r.info = "Подписывается электронной подписью"; save(); if(S.view==="requests") render(); }, 1400);
-    setTimeout(()=>{ r.step = 2; r.info = "Готова. Можно открыть и отправить"; save(); if(S.view==="requests") render(); toast("Справка готова"); }, 3400);
+    const login = account;
+    const progress = (step, info) => {
+      r.step = step; r.info = info;
+      const active = account===login, reqs = active ? S.reqs : LS.get("reqs", [], login);
+      const current = reqs.find(item=>item.id===r.id);
+      if(!current) return;
+      Object.assign(current, {step, info});
+      LS.set("reqs", reqs, login);
+      if(active && S.view==="requests" && !document.getElementById("app").hidden){ render(); if(step===2) toast("Справка готова"); }
+    };
+    setTimeout(()=>progress(1,"Подписывается электронной подписью"), 1400);
+    setTimeout(()=>progress(2,"Готова. Можно открыть и отправить"), 3400);
   }
 }
 // заказ конкретной справки (поиск на главной, ссылка #docs:order): окно выбора с раскрытой формой
 function showOrder(id){
+  if(isStaff()) return;
   const c = CATALOG.find(x=>x.id===id); if(!c) return;
   if(S.view!=="requests") go("requests");
   openPicker(c.app ? "app" : "cert", id);
@@ -3296,9 +3429,9 @@ function showDoc(id){
   const r = S.reqs.find(x=>x.id===id); if(!r) return;
   const code = id.replace(/\D/g,"").slice(-6).replace(/(\d{3})(\d{3})/,"$1-$2");
   openSheet("Справка об обучении", `<div class="doc">
-      <div class="dh">Министерство науки и высшего образования<br>Университет · Институт информационных технологий</div>
+      <div class="dh">Министерство науки и высшего образования<br>Университет · ${STUDENT.inst}</div>
       <h3>СПРАВКА</h3>
-      <p>Выдана <b>${STUDENT.fio}</b> в том, что она действительно обучается на ${STUDENT.course} курсе по очной форме обучения за счёт бюджетных ассигнований по направлению подготовки ${STUDENT.program}.</p>
+      <p><b>${STUDENT.fio}</b> обучается на ${STUDENT.course} курсе по направлению подготовки ${STUDENT.program}. Форма и основание обучения: ${STUDENT.form}.</p>
       <p>Срок окончания обучения: 31 августа 2028 г.<br>Справка выдана для предоставления: ${esc(r.purpose||"по месту требования")}.</p>
       <p style="font-size:12px;color:#666">№ ${r.id} от ${fmtDate(new Date(r.date))} ${new Date(r.date).getFullYear()} г.</p>
       <div class="sign"><canvas id="docqr" width="100" height="100" style="width:72px;height:72px"></canvas><div>ДОКУМЕНТ ПОДПИСАН<br>ЭЛЕКТРОННОЙ ПОДПИСЬЮ<br><span style="color:#333">Код проверки: <b class="mono">${code}</b></span></div></div>
@@ -3350,11 +3483,16 @@ document.addEventListener("click", e => {
     case "pftab": { S.infoTab = +a.dataset.i; document.querySelectorAll(".pf-tabs button").forEach((b,k)=>{ b.setAttribute("aria-pressed", k===S.infoTab); b.setAttribute("aria-selected", k===S.infoTab); });
       const tr = document.getElementById("pfTrack"); tr.scrollTo({left: S.infoTab*tr.clientWidth, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"}); break; }
     case "pfeye": S.shown[a.dataset.k] = !S.shown[a.dataset.k]; render(); break;
-    case "pfcopy": { const k = a.dataset.k, p = PROFILE_INFO.find(p=>k.startsWith(p.id)), row = p.rows[+k.slice(p.id.length)];
+    case "pfcopy": { const k = a.dataset.k, p = profileInfo().find(p=>k.startsWith(p.id)), row = p.rows[+k.slice(p.id.length)];
       const done = () => toast(`${row[0]}: скопировано`);
       try{ navigator.clipboard.writeText(row[1]).then(done, done); }catch(err){ done(); } break; }
-    case "readall": S.read = DEFAULT_NOTES.map(n=>n.id); save(); render(); toast("Все уведомления прочитаны"); break;
-    case "note": { const n = DEFAULT_NOTES.find(x=>x.id===a.dataset.id); if(!S.read.includes(n.id)) S.read.push(n.id); save(); if(n.go) go(n.go); else render(); break; }
+    case "readall": S.read = NOTES.map(n=>n.id); save(); render(); toast("Все уведомления прочитаны"); break;
+    case "note": { const n = NOTES.find(x=>x.id===a.dataset.id); if(!S.read.includes(n.id)) S.read.push(n.id); save(); if(n.go) go(n.go); else render(); break; }
+    case "staff-step": {
+      const r = S.reqs.find(x=>x.id===a.dataset.id);
+      if(isStaff() && r?.step<2){ r.step++; save(); render(); }
+      break;
+    }
     case "order": showOrder(a.dataset.id); break;
     case "picker": openPicker(a.dataset.k); break;
     case "gmopen": gmToggle(a.dataset.id); break;
