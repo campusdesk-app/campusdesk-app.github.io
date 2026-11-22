@@ -430,6 +430,16 @@ html:root[data-bg="photo"][data-scheme] .bg { background: #8a9bb0 center / cover
 @keyframes rise { from { opacity: 0; transform: translateY(24px) scale(.97); } }
 @keyframes fade { from { opacity: 0; } }
 
+/* Смешиваем изображения экранов, чтобы стекло не меняло слой размытия в середине перехода. */
+::view-transition { pointer-events: none; }
+::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: 240ms;
+  animation-timing-function: ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0s; }
+}
+
 section.view { min-height: 100dvh; padding: calc(16px + env(safe-area-inset-top)) 16px calc(var(--dock-h) + 40px + env(safe-area-inset-bottom)); }
 
 /* Главная: крупные часы и дата, как в референсе */
@@ -1550,7 +1560,7 @@ function ripple(x, y) {
   r.className = 'ripple'; r.style.left = x + 'px'; r.style.top = y + 'px';
   dock.append(r); setTimeout(() => r.remove(), 700);
 }
-function activate(i) { go(DOCK[i].id); }
+function activate(i) { navigate(DOCK[i].id); }
 
 // док при прокрутке не меняется: сжатие на каждое движение пальца давало мигание
 addEventListener('resize', () => { measure(); if (!$('#v-schedule').hidden) { cal.origin = null; paint(); } });
@@ -1570,13 +1580,43 @@ function nextLesson() {
 const ALIAS = { grades: 'study', requests: 'docs', today: 'home' };       // id разделов шаблона → наши
 const ZK_VIEW = { study: 'grades', docs: 'requests', inbox: 'inbox', profile: 'profile', settings: 'settings', access: 'access' };
 const DOCK_OF = { docs: 'profile' };                                    // Документы живут внутри Профиля
-let curView = 'home', navStack = [];
+let curView = 'home', navStack = [], sectionTransition = null;
 // «Назад» возвращает на предыдущий экран; если истории нет — на главную
-function back() { go(navStack.pop() || 'home', true); }
-function go(id, noPush) {
+function back() { navigate(navStack.pop() || 'home', true); }
+function sectionId(id) {
   id = ALIAS[id] || id;
   if (!TITLES[id]) id = 'home';
-  if (isStaff() && id === 'docs') id = 'study';
+  return isStaff() && id === 'docs' ? 'study' : id;
+}
+function stopSectionTransition() {
+  const previous = sectionTransition;
+  sectionTransition = null;
+  previous?.skipTransition();
+}
+function navigate(id, noPush) {
+  id = sectionId(id);
+  stopSectionTransition();
+  if (reduced() || document.hidden || id === curView) return showSection(id, noPush);
+  if (!document.startViewTransition) {
+    showSection(id, noPush);
+    const heading = $('#app > section:not([hidden]) h1, #app > section:not([hidden]) #clock-big');
+    heading?.animate([{opacity: .6, transform: 'translateY(6px)'}, {opacity: 1, transform: 'none'}],
+      {duration: 200, easing: 'ease-out'});
+    return;
+  }
+  const transition = document.startViewTransition(() => {
+    if (sectionTransition === transition) showSection(id, noPush);
+  });
+  sectionTransition = transition;
+  transition.ready.catch(() => {}); // Быстрый повторный переход может отменить снимок.
+  const clear = () => { if (sectionTransition === transition) sectionTransition = null; };
+  transition.finished.then(clear, clear);
+}
+function go(id, noPush) {
+  stopSectionTransition();
+  showSection(sectionId(id), noPush);
+}
+function showSection(id, noPush) {
   if (!noPush && id !== curView) { navStack.push(curView); if (navStack.length > 30) navStack.shift(); }
   if (id === 'home') navStack = [];
   curView = id;
@@ -1635,10 +1675,10 @@ window.lkUI = {
 window.lkMy = { add: addMy, del: delMy, has: id => Object.values(MY).some(l => l.some(o => o.id === id)) };
 window.lkBack = back;
 window.lkView = () => curView;
-window.lkLogout = () => { window.ZK.closeSheet(); $('#app').hidden = true; $('#login').hidden = false; };
+window.lkLogout = () => { stopSectionTransition(); window.ZK.closeSheet(); $('#app').hidden = true; $('#login').hidden = false; };
 document.addEventListener('click', e => {
   if (e.target.closest('[data-back]')) return back();
-  const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go);
+  const g = e.target.closest('[data-go]'); if (g) navigate(g.dataset.go);
 });
 
 /* ---------- Календарь: семантический зум ---------- */
@@ -2184,7 +2224,10 @@ function drawOrbs(now) {
     o.el.style.transform = `translate3d(${(o.x + dx).toFixed(1)}px, ${(o.y + dy).toFixed(1)}px, 0)`;
   }
 }
-function orbLoop(now) { drawOrbs(now); orbRAF = reduced() ? 0 : requestAnimationFrame(orbLoop); }
+function orbLoop(now) {
+  if (!sectionTransition) drawOrbs(now);
+  orbRAF = reduced() ? 0 : requestAnimationFrame(orbLoop);
+}
 addEventListener('pointermove', e => { if (e.pointerType === 'mouse') { mouse.tx = e.clientX / innerWidth - .5; mouse.ty = e.clientY / innerHeight - .5; } }, { passive: true });
 let orbResize;
 addEventListener('resize', () => { clearTimeout(orbResize); orbResize = setTimeout(layoutOrbs, 120); });
